@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Latitude and Longitude Mapping Tool</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+  <style>
+    #map { height: 500px; }
+  </style>
+</head>
+<body>
+  <h1>Latitude and Longitude Mapping Tool</h1>
+  <input type="text" id="segmentRef" placeholder="Enter Segment ID">
+  <button id="drawButton">Draw</button>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const API_URL = "https://smap.hereapi.com/v8/maps/attributes/path";
+
+    // Initialize the map
+    const map = L.map('map').setView([22.45715, -100.32115], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    let drawnPolylines = []; // Array to store drawn polylines
+
+    document.getElementById('drawButton').addEventListener('click', async () => {
+      const segmentRef = document.getElementById('segmentRef').value.trim();
+      if (!segmentRef) {
+        alert("Please enter a Segment ID!");
+        return;
+      }
+
+      // Corrected URL with attributes parameter
+      const attributes = "LINK_FCN(*),ROAD_GEOM_FCN(*)";
+      
+      // Ensure the segmentRef is properly encoded
+      const encodedSegmentRef = segmentRef;
+
+      const url = `${API_URL}?apikey=ZiiWdJupmaAy6fQawjB0cwFruxJd9c9vAzxjuQ8EJzk&segmentRefs=${encodedSegmentRef}&attributes=${encodeURIComponent(attributes)}`;
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Check if segments exist
+        if (!data.segments || data.segments.length === 0) {
+          alert("No segment information found for the provided ID!");
+          return;
+        }
+
+        // Clear previous polylines
+        clearPolylines();
+
+        // Parse and draw new routes
+        data.segments.forEach(segment => {
+          const roadGeom = segment.attributes.ROAD_GEOM_FCN[0];
+          if (!roadGeom || !roadGeom.LAT || !roadGeom.LON) {
+            console.error("Missing LAT or LON in ROAD_GEOM_FCN");
+            return;
+          }
+
+          const latList = parseCoordinates(roadGeom.LAT);
+          const lonList = parseCoordinates(roadGeom.LON);
+
+          if (latList.length !== lonList.length) {
+            console.error("LAT and LON lengths do not match!");
+            return;
+          }
+
+          const latLngs = latList.map((lat, idx) => [lat, lonList[idx]]);
+          const polyline = L.polyline(latLngs, { color: 'blue' }).addTo(map);
+          drawnPolylines.push(polyline);
+          map.fitBounds(latLngs);
+        });
+      } catch (error) {
+        console.error("Error:", error);
+        alert("API request failed!");
+      }
+    });
+
+    // Function to parse coordinates from the string
+    function parseCoordinates(coordString) {
+      try {
+        const coords = coordString.split(',').map(Number);
+        const results = [];
+        let current = coords[0] / 100000; // Initial value
+        results.push(current);
+
+        for (let i = 1; i < coords.length; i++) {
+          current += coords[i] / 100000;
+          results.push(current);
+        }
+
+        return results;
+      } catch (error) {
+        console.error("Failed to parse coordinates:", coordString);
+        return [];
+      }
+    }
+
+    // Function to clear previously drawn polylines
+    function clearPolylines() {
+      drawnPolylines.forEach(polyline => map.removeLayer(polyline));
+      drawnPolylines = [];
+    }
+  </script>
+</body>
+</html>
